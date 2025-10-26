@@ -68,7 +68,6 @@ class Table:
             else:
                 self.data[col].extend([None] * num_rows) # type: ignore
 
-
     def __getitem__(self, key: Union[str, list[str], tuple[str]]) -> dict[str, list[str]]:
 
         if isinstance(key, str):
@@ -95,4 +94,49 @@ class Table:
         else:
             raise TypeError(f"Invalid key type {type(key)}; must be str or list/tuple of str")
         
-    
+    def select(self, key: Union[str, list[str], tuple[str]]) -> dict[str, list[str]]:
+        """
+            Uses getitem
+        """
+        return self.__getitem__(key)
+
+    def where(self, *conditions: str):
+        pass
+
+
+    def _generate_filter_mask(self, value1: str, value1_type: str, operator: str, value2: str, value2_type: str, negate: bool = False):
+        """
+            Generates a filter mask,
+
+            value1 and value2 must either be a column or a text literal
+        """
+        
+        if not value1.startswith("'") and not value1.endswith("'") and (value1 not in self.columns.keys()):
+            raise ValueError(f"{value1} is not a column in {self.table_name}")
+        
+        if not value2.startswith("'") and not value2.endswith("'") and (value2 not in self.columns.keys()):
+            raise ValueError(f"{value2} is not a column in {self.table_name}")
+        
+        if value1_type != value2_type:
+            raise ValueError(f"Data types {value1_type} and {value2_type} are not comparable")
+
+        length = len(self.data.values()[0]) # type: ignore
+        value1_is_col = value1.startswith("'")
+        value2_is_col = value2.startswith("'")
+
+        if operator == '=':
+            pass
+        elif operator in ('<>', '!='):
+            pass
+
+        if value1_type not in ('numeric', 'time'):
+            raise ValueError(f'Invalid Operator: {operator} for {value1_type}')
+
+        if operator == '>':
+            pass
+        elif operator == '>=':
+            pass
+        elif operator == '<':
+            pass
+        elif operator == '<=':
+            pass
