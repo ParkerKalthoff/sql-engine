@@ -20,7 +20,7 @@ TOKEN_SPEC = [
     ("RPAREN", r"\)"),
     ("DOT", r"\."),
     ("OP", r"<=|>=|!=|=|<|>"),
-    # Used to indentify invalid column names like 123abc
+    # Used to catch illegal identifiers before processing to simplify logic
     ("INVALID_NUMBER", r"\d+[a-zA-Z_]+"),
     ("NUMBER", r"\d+(\.\d+)?"),
     ("STRING", r"'[^']*'"),

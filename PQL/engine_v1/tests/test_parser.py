@@ -1,82 +1,148 @@
-from PQL.engine_v1.lexer import tokenize
 from PQL.engine_v1.models.lexer_models import Token
-
-"""
-Test cases to ensure tokenizer extracts tokens from strings properly
-"""
-
-
-def test_invalid_tokens():
-    test_cases: list[str] = ["123ABC"]
-
-    for test_case in test_cases:
-        try:
-            tokenize(test_case)
-            assert False
-        except SyntaxError:
-            pass
+from PQL.engine_v1.parser import Parser
+from PQL.engine_v1.models.parser_models import (
+    Col,
+    Lit,
+    SelectItem,
+    SelectQuery,
+    TableRef,
+)
 
 
-def test_valid_query_tokenization():
-    test_cases: list[tuple[str, list[Token]]] = [
-        (
-            "SELECT * FROM ACCOUNT",
-            [
-                Token("SELECT", "SELECT"),
-                Token("STAR", "*"),
-                Token("FROM", "FROM"),
-                Token("IDENT", "ACCOUNT"),
-            ],
-        ),
-        (
-            "SELECT NAME, ID FROM ACCOUNT WHERE 1.0 = 1",
-            [
-                Token("SELECT", "SELECT"),
-                Token("IDENT", "NAME"),
-                Token("COMMA", ","),
-                Token("IDENT", "ID"),
-                Token("FROM", "FROM"),
-                Token("IDENT", "ACCOUNT"),
-                Token("WHERE", "WHERE"),
-                Token("NUMBER", "1.0"),
-                Token("OP", "="),
-                Token("NUMBER", "1"),
-            ],
-        ),
-        (
-            "SELECT NAME AS ACCOUNT_NAME, ID FROM ACCOUNT JOIN PURCHASES ON PURCHASES.ACCOUNT_ID = ACCOUNT.ID",
-            [
-                Token("SELECT", "SELECT"),
-                Token("IDENT", "NAME"),
-                Token("AS", "AS"),
-                Token("IDENT", "ACCOUNT_NAME"),
-                Token("COMMA", ","),
-                Token("IDENT", "ID"),
-                Token("FROM", "FROM"),
-                Token("IDENT", "ACCOUNT"),
-                Token("JOIN", "JOIN"),
-                Token("IDENT", "PURCHASES"),
-                Token("ON", "ON"),
-                Token("IDENT", "PURCHASES"),
-                Token("DOT", "."),
-                Token("IDENT", "ACCOUNT_ID"),
-                Token("OP", "="),
-                Token("IDENT", "ACCOUNT"),
-                Token("DOT", "."),
-                Token("IDENT", "ID"),
-            ],
-        ),
+def t(kind: str, value: str) -> Token:
+    """Shorthand for creating tokens"""
+    return Token(kind, value)
+
+
+def test_simple_select_single_column():
+    tokens = [
+        t("SELECT", "SELECT"),
+        t("IDENT", "name"),
+        t("FROM", "FROM"),
+        t("IDENT", "users"),
     ]
 
-    for test_case in test_cases:
-        query = test_case[0]
-        expected_result_tokens = test_case[1]
+    parser = Parser(tokens)
+    query = parser.parse()
 
-        result_tokens = tokenize(query)
+    assert isinstance(query, SelectQuery)
+    assert query.table == TableRef(name="users", alias=None)
+    assert len(query.columns) == 1
 
-        assert len(result_tokens) == len(expected_result_tokens)
+    col = query.columns[0]
+    assert isinstance(col, SelectItem)
+    assert isinstance(col.value, Col)
+    assert col.value.name == "name"
+    assert col.value.table is None
+    assert col.alias is None
 
-        for result_token, expected_result_token in zip(
-            result_tokens, expected_result_tokens
-        ):
-            assert result_token == expected_result_token
+
+def test_select_multiple_columns():
+    tokens = [
+        t("SELECT", "SELECT"),
+        t("IDENT", "id"),
+        t("COMMA", ","),
+        t("IDENT", "email"),
+        t("FROM", "FROM"),
+        t("IDENT", "users"),
+    ]
+
+    query = Parser(tokens).parse()
+
+    assert len(query.columns) == 2  # type: ignore
+    assert query.columns[0].value.name == "id"  # type: ignore
+    assert query.columns[1].value.name == "email"  # type: ignore
+
+
+def test_select_qualified_column():
+    tokens = [
+        t("SELECT", "SELECT"),
+        t("IDENT", "users"),
+        t("DOT", "."),
+        t("IDENT", "id"),
+        t("FROM", "FROM"),
+        t("IDENT", "users"),
+    ]
+
+    query = Parser(tokens).parse()
+
+    col = query.columns[0].value  # type: ignore
+    assert isinstance(col, Col)
+    assert col.table == "users"
+    assert col.name == "id"
+
+
+def test_select_literal_number():
+    tokens = [
+        t("SELECT", "SELECT"),
+        t("NUMBER", "42"),
+        t("FROM", "FROM"),
+        t("IDENT", "dual"),
+    ]
+
+    query = Parser(tokens).parse()
+
+    lit = query.columns[0].value  # type: ignore
+    assert isinstance(lit, Lit)
+    assert lit.value == "42"
+    assert lit.type == "NUMBER"
+
+
+def test_select_column_alias():
+    tokens = [
+        t("SELECT", "SELECT"),
+        t("IDENT", "name"),
+        t("AS", "AS"),
+        t("IDENT", "username"),
+        t("FROM", "FROM"),
+        t("IDENT", "users"),
+    ]
+
+    query = Parser(tokens).parse()
+
+    item = query.columns[0]  # type: ignore
+    assert item.alias == "username"  # type: ignore
+
+
+def test_from_table_alias():
+    tokens = [
+        t("SELECT", "SELECT"),
+        t("IDENT", "id"),
+        t("FROM", "FROM"),
+        t("IDENT", "users"),
+        t("AS", "AS"),
+        t("IDENT", "u"),
+    ]
+
+    query = Parser(tokens).parse()
+
+    assert query.table == TableRef(name="users", alias="u")  # type: ignore
+
+
+def test_invalid_missing_from():
+    tokens = [
+        t("SELECT", "SELECT"),
+        t("IDENT", "id"),
+    ]
+
+    parser = Parser(tokens)
+    try:
+        parser.parse()
+        assert False
+    except SyntaxError:
+        pass
+
+
+def test_invalid_select_item():
+    tokens = [
+        t("SELECT", "SELECT"),
+        t("FROM", "FROM"),
+        t("IDENT", "users"),
+    ]
+
+    parser = Parser(tokens)
+    try:
+        parser.parse()
+        assert False
+    except SyntaxError:
+        pass

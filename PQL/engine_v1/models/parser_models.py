@@ -1,9 +1,31 @@
 from dataclasses import dataclass
 from typing import Literal
 
+# Abstract classes
+
 
 class Expr:
     pass
+
+
+class Query:
+    pass
+
+
+# Data classes
+
+
+@dataclass
+class TableRef:
+    name: str
+    alias: str | None
+
+
+@dataclass
+class Join:
+    type: Literal["INNER", "LEFT", "RIGHT", "FULL"]
+    table: TableRef
+    on: Expr
 
 
 @dataclass
@@ -14,7 +36,7 @@ class Lit(Expr):
 
 @dataclass
 class Col(Expr):
-    table: str | None
+    table: str | None  # alias or table name
     name: str
 
 
@@ -44,12 +66,9 @@ class SelectItem:
     alias: str | None
 
 
-class Query:
-    pass
-
-
 @dataclass
 class SelectQuery(Query):
     columns: list[SelectItem]
-    table: str
+    table: TableRef
+    joins: list[Join]
     where: Expr | None

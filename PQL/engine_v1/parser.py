@@ -1,5 +1,13 @@
 from PQL.engine_v1.models.lexer_models import Token
-from PQL.engine_v1.models.parser_models import Col, Query, SelectItem, SelectQuery
+from PQL.engine_v1.models.parser_models import (
+    Col,
+    Join,
+    Lit,
+    Query,
+    SelectItem,
+    SelectQuery,
+    TableRef,
+)
 
 
 class Parser:
@@ -50,39 +58,59 @@ class Parser:
 
     def parse_select(self) -> SelectQuery:
         self.eat("SELECT")
+        columns = self.parse_select_columns()
         self.eat("FROM")
-        self.match("WHERE")
-        raise SyntaxError()
+        from_table = self.parse_from_statement()
 
-    # TODO Support Expressions like (SALARY + BONUS) - TAXES AS NET_EARNINGS
-    # Keeping simple as columns for now
-    def parse_select_columns(self) -> None:
-        """
-        Parses tokens to construct Column or Literal objects
-        """
-        current = self.current()
-        if not current:
-            raise SyntaxError()
-        columns: list[SelectItem] = []
+        joins: list[Join] = []  # future JOIN parsing
+        where = None  # future WHERE parsing
 
-        kind = current.kind
-        value = current.value
+        return SelectQuery(columns=columns, table=from_table, joins=joins, where=where)
+
+    # TODO Support Expressions like (SALARY + BONUS) * 0.77 AS NET_EARNINGS
+    # Keeping simple as columns and literals for now
+    def parse_select_columns(self) -> list[SelectItem]:
+        items: list[SelectItem] = []
 
         while True:
-            match kind:
-                case "IDENT":
-                    if self.match("DOT"):
-                        if epr_val := self.match("IDENT"):
-                            expression = Col(table=value, value=epr_val)
+            tok = self.current()
+            if not tok:
+                raise SyntaxError("Unexpected end of input")
 
-                        else:
-                            raise SyntaxError(
-                                "Missing Identifier after table qualifier"
-                            )
+            if tok.kind == "IDENT":
+                ident = self.eat("IDENT").value
 
-                case "NUMBER":
-                    expression_value = ""
-                case "STRING":
-                    expression_value = ""
-                case _:
-                    raise SyntaxError(f"Attempted to parse {kind} as select column")
+                if self.match("DOT"):
+                    col = self.eat("IDENT").value
+                    expr = Col(table=ident, name=col)  # type: ignore
+                else:
+                    expr = Col(table=None, name=ident)
+
+            elif tok.kind in ("NUMBER", "STRING"):
+                expr = Lit(value=self.eat(tok.kind).value, type=tok.kind)
+
+            else:
+                raise SyntaxError(f"Invalid select item: {tok}")
+
+            alias = None
+            if self.match("AS"):
+                alias = self.eat("IDENT").value
+
+            items.append(SelectItem(expr, alias))
+
+            if not self.match("COMMA"):
+                break
+
+        return items
+
+    def parse_from_statement(self) -> TableRef:
+        current = self.eat("IDENT")
+        alias = None
+
+        if self.match("AS"):
+            if alias_token := self.match("IDENT"):
+                alias = alias_token.value
+            else:
+                raise SyntaxError("Invalid from alias")
+
+        return TableRef(name=current.value, alias=alias)
