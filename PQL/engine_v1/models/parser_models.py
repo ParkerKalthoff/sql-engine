@@ -1,76 +1,102 @@
 from dataclasses import dataclass
-from typing import Literal
-
-# Classes for the parser module to create AST nodes and for planner to consume
-
-# Abstract classes
+from typing import Literal, Optional, List, Union
 
 
-class Expr:
+# =========================
+# Base AST node classes
+# =========================
+
+
+class Node:
+    """Base class for all AST nodes."""
+
     pass
 
 
-class Query:
+class Expr(Node):
+    """Base class for all expressions."""
+
     pass
 
 
-# Data classes
+class Query(Node):
+    """Base class for all queries."""
+
+    pass
 
 
-@dataclass
-class TableRef:
-    name: str
-    alias: str | None
+class FromItem(Node):
+    """Base class for items that can appear in FROM or JOIN clauses."""
 
-
-@dataclass
-class Join:
-    type: Literal["INNER", "LEFT", "RIGHT", "FULL"]
-    table: TableRef
-    on: Expr
-
-
-@dataclass
-class Lit(Expr):
-    value: str | int | float | bool
-    type: str
-
-
-@dataclass
-class Col(Expr):
-    table: str | None  # alias or table name
-    name: str
+    alias: Optional[str] = None
 
 
 @dataclass
 class BinaryExpr(Expr):
     left: Expr
-    op: str
-    right: Expr
-
-
-@dataclass
-class LogicalExpr(Expr):
-    left: Expr
-    op: Literal["AND", "OR"]
+    op: Literal["+", "-", "*", "/", "=", "!=", "<", "<=", ">", ">=", "AND", "OR"]
     right: Expr
 
 
 @dataclass
 class UnaryExpr(Expr):
-    op: str
-    value: Expr
+    op: Literal["NOT", "-"]
+    operand: Expr
 
 
 @dataclass
-class SelectItem:
-    value: Expr
-    alias: str | None
+class LiteralExpr(Expr):
+    value: Union[str, int, float, bool]
+
+
+@dataclass
+class ColumnExpr(Expr):
+    table: Optional[str]  # table name or alias
+    name: str
+
+
+@dataclass
+class TableRef(FromItem):
+    name: str
+    alias: Optional[str] = None
+
+
+@dataclass
+class SubqueryRef(FromItem):
+    query: Query
+    alias: Optional[str] = None
+
+
+@dataclass
+class Join(Node):
+    type: Literal["INNER", "LEFT", "RIGHT", "FULL"]
+    right: FromItem
+    condition: Expr
+
+
+@dataclass
+class SelectItem(Node):
+    expr: Expr
+    alias: Optional[str] = None
+
+
+@dataclass
+class OrderByItem(Node):
+    expr: Expr
+    direction: Literal["ASC", "DESC"] = "ASC"
 
 
 @dataclass
 class SelectQuery(Query):
-    columns: list[SelectItem]
-    table: TableRef
-    joins: list[Join]
-    where: Expr | None
+    select: List[SelectItem]
+    from_: FromItem
+
+    joins: Optional[List[Join]] = None
+    where: Optional[Expr] = None
+    group_by: Optional[List[Expr]] = None
+    having: Optional[Expr] = None
+    order_by: Optional[List[OrderByItem]] = None
+    limit: Optional[int] = None
+
+    # Only used when this query is referenced as a subquery
+    alias: Optional[str] = None

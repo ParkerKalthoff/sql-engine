@@ -1,8 +1,8 @@
 from PQL.engine_v1.models.lexer_models import Token
 from PQL.engine_v1.parser import Parser
 from PQL.engine_v1.models.parser_models import (
-    Col,
-    Lit,
+    ColumnExpr,
+    LiteralExpr,
     SelectItem,
     SelectQuery,
     TableRef,
@@ -26,14 +26,14 @@ def test_simple_select_single_column():
     query = parser.parse()
 
     assert isinstance(query, SelectQuery)
-    assert query.table == TableRef(name="users", alias=None)
-    assert len(query.columns) == 1
+    assert query.from_ == TableRef(name="users", alias=None)
+    assert len(query.select) == 1
 
-    col = query.columns[0]
+    col = query.select[0]
     assert isinstance(col, SelectItem)
-    assert isinstance(col.value, Col)
-    assert col.value.name == "name"
-    assert col.value.table is None
+    assert isinstance(col.expr, ColumnExpr)
+    assert col.expr.name == "name"
+    assert col.expr.table is None
     assert col.alias is None
 
 
@@ -47,11 +47,11 @@ def test_select_multiple_columns():
         t("IDENT", "users"),
     ]
 
-    query = Parser(tokens).parse()
+    query: SelectQuery = Parser(tokens).parse()  # type: ignore
 
-    assert len(query.columns) == 2  # type: ignore
-    assert query.columns[0].value.name == "id"  # type: ignore
-    assert query.columns[1].value.name == "email"  # type: ignore
+    assert len(query.select) == 2
+    assert query.select[0].expr.name == "id"  # type: ignore
+    assert query.select[1].expr.name == "email"  # type: ignore
 
 
 def test_select_qualified_column():
@@ -64,10 +64,10 @@ def test_select_qualified_column():
         t("IDENT", "users"),
     ]
 
-    query = Parser(tokens).parse()
+    query: SelectQuery = Parser(tokens).parse()  # type: ignore
 
-    col = query.columns[0].value  # type: ignore
-    assert isinstance(col, Col)
+    col = query.select[0].expr
+    assert isinstance(col, ColumnExpr)
     assert col.table == "users"
     assert col.name == "id"
 
@@ -80,12 +80,11 @@ def test_select_literal_number():
         t("IDENT", "dual"),
     ]
 
-    query = Parser(tokens).parse()
+    query: SelectQuery = Parser(tokens).parse()  # type: ignore
 
-    lit = query.columns[0].value  # type: ignore
-    assert isinstance(lit, Lit)
+    lit = query.select[0].expr
+    assert isinstance(lit, LiteralExpr)
     assert lit.value == "42"
-    assert lit.type == "NUMBER"
 
 
 def test_select_column_alias():
@@ -98,9 +97,9 @@ def test_select_column_alias():
         t("IDENT", "users"),
     ]
 
-    query = Parser(tokens).parse()
+    query: SelectQuery = Parser(tokens).parse()  # type: ignore
 
-    item = query.columns[0]  # type: ignore
+    item = query.select[0]
     assert item.alias == "username"  # type: ignore
 
 
@@ -114,9 +113,9 @@ def test_from_table_alias():
         t("IDENT", "u"),
     ]
 
-    query = Parser(tokens).parse()
+    query: SelectQuery = Parser(tokens).parse()  # type: ignore
 
-    assert query.table == TableRef(name="users", alias="u")  # type: ignore
+    assert query.from_ == TableRef(name="users", alias="u")  # type: ignore
 
 
 def test_invalid_missing_from():

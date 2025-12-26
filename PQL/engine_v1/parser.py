@@ -1,8 +1,8 @@
 from PQL.engine_v1.models.lexer_models import Token
 from PQL.engine_v1.models.parser_models import (
-    Col,
+    ColumnExpr,
     Join,
-    Lit,
+    LiteralExpr,
     Query,
     SelectItem,
     SelectQuery,
@@ -65,7 +65,7 @@ class Parser:
         joins: list[Join] = []  # future JOIN parsing
         where = None  # future WHERE parsing
 
-        return SelectQuery(columns=columns, table=from_table, joins=joins, where=where)
+        return SelectQuery(select=columns, from_=from_table, joins=joins, where=where)
 
     # TODO Support Expressions like (SALARY + BONUS) * 0.77 AS NET_EARNINGS
     # Keeping simple as columns and literals for now
@@ -82,12 +82,12 @@ class Parser:
 
                 if self.match("DOT"):
                     col = self.eat("IDENT").value
-                    expr = Col(table=ident, name=col)  # type: ignore
+                    expr = ColumnExpr(table=ident, name=col)  # type: ignore
                 else:
-                    expr = Col(table=None, name=ident)
+                    expr = ColumnExpr(table=None, name=ident)
 
             elif tok.kind in ("NUMBER", "STRING"):
-                expr = Lit(value=self.eat(tok.kind).value, type=tok.kind)
+                expr = LiteralExpr(value=self.eat(tok.kind).value)
 
             else:
                 raise SyntaxError(f"Invalid select item: {tok}")

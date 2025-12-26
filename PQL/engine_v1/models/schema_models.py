@@ -61,11 +61,11 @@ class Literal(Value):
 class Row(Value):
     """A representation of a row in a table."""
 
-    def __init__(self, row: tuple[Any]) -> None:
+    def __init__(self, row: tuple[Any, ...]) -> None:
         self.row = row
 
     def add_value(self, value: Any) -> None:
-        self.row += (value,)
+        self.row = self.row + (value,)
 
 
 class Expression(Value):
@@ -83,14 +83,18 @@ class Expression(Value):
         return self.operation.resolve(left, right)
 
 
-class Column:
+class Column(Value):
     """
     Representation of a column in a table.
     """
 
+    SUPPORTED_TYPES = ("INT", "STR", "FLOAT", "BOOL")
+
     def __init__(self, name: str, col_type: str) -> None:
+        if col_type not in self.SUPPORTED_TYPES:
+            raise ValueError(f"Unsupported column type: {col_type}")
         self.name = name
-        self.col_type = col_type
+        self.col_type: str = col_type
 
     def __repr__(self) -> str:
         return f"Column(name={self.name}, type={self.col_type})"
@@ -104,10 +108,15 @@ class Scehma:
         }
 
     def add_column(self, column: Column) -> None:
+        if column.name in self.index:
+            raise ValueError(f"Column '{column.name}' already exists in schema")
+
         self.columns += (column,)
+        self.index[column.name] = len(self.columns) - 1
 
     def remove_column(self, column_name: str) -> None:
         self.columns = tuple(col for col in self.columns if col.name != column_name)
+        self.index = {col.name: idx for idx, col in enumerate(self.columns)}
 
     def __repr__(self) -> str:
         return f"Scehma(columns={[col.name for col in self.columns]})"
@@ -116,6 +125,58 @@ class Scehma:
         """Returns a new schema for a given list of column names"""
         projected_columns = [col for col in self.columns if col.name in column_names]
         return Scehma(projected_columns)
+
+
+class Condition:
+    """
+    Represents a condition for filtering rows in a table.
+    """
+
+    def __init__(self, left: Value, operation: str, right: Value) -> None:
+        self.left = left
+        self.operation = Operation(operation)
+        self.right = right
+
+    def evaluate(self, row: Row, schema: Scehma) -> bool:
+        """
+        Evaluates the condition against a row using the schema.
+        """
+
+        if isinstance(self.left, Column):
+            column_index = schema.index.get(self.left.name)
+            if column_index is None:
+                raise ValueError(
+                    f"Column '{self.left.name}' does not exist in the schema"
+                )
+            left_row_value = row.row[column_index]
+        elif isinstance(self.left, Literal):
+            left_row_value = self.left.value
+        elif isinstance(self.left, Expression):
+            left_row_value = self.left.resolve()
+        else:
+            raise TypeError("Left operand must be a Column, Literal, or Expression")
+
+        if isinstance(self.right, Column):
+            column_index = schema.index.get(self.right.name)
+            if column_index is None:
+                raise ValueError(
+                    f"Column '{self.right.name}' does not exist in the schema"
+                )
+            right_row_value = row.row[column_index]
+        elif isinstance(self.right, Literal):
+            right_row_value = self.right.value
+        elif isinstance(self.right, Expression):
+            right_row_value = self.right.resolve()
+        else:
+            raise TypeError("Right operand must be a Column, Literal, or Expression")
+
+        result = self.operation.resolve(left_row_value, right_row_value)
+
+        assert isinstance(result, bool), (
+            "Condition evaluation must return a boolean value"
+        )
+
+        return result
 
 
 class Table:
@@ -131,6 +192,12 @@ class Table:
             return self.rows[row_ident]
         else:
             raise TypeError("Row identifier must be an integer index")
+
+    def add_row(self, row: Row) -> None:
+        if len(row.row) != len(self.columns):
+            raise ValueError("Row length does not match table schema length")
+
+        self.rows = self.rows + (row,)
 
     def delete_row_by_index(self, index: int) -> None:
         if index < 0 or index >= len(self.rows):
@@ -162,21 +229,34 @@ class Table:
         projected_table.rows = tuple(projected_rows)
         return projected_table
 
-    def filter(self, condition: Expression) -> "Table":
-        """Returns a new table filtered by the given condition"""
-
+    def filter(self, conditions: list[Condition]) -> "Table":
+        """
+        Filters the table based on a list of conditions and returns a new table.
+        """
         filtered_table = Table(self.name, Scehma(self.columns))
 
-        filtered_rows = list[Row]()
+        filtered_rows: list[Row] = []
         for row in self.rows:
-            context = {col.name: row.row[idx] for idx, col in enumerate(self.columns)}
-
-            # Evaluate the condition
-            if self.evaluate_condition(condition, context):
+            if all(
+                condition.evaluate(row, Scehma(self.columns))
+                for condition in conditions
+            ):
                 filtered_rows.append(row)
 
         filtered_table.rows = tuple(filtered_rows)
         return filtered_table
+
+    def count_rows(self) -> int:
+        """Equivalent to COUNT(*)"""
+        return len(self.rows)
+
+    def __repr__(self) -> str:
+        return f"Table(name={self.name}, columns={[col.name for col in self.columns]}, rows={len(self.rows)})"
+
+    def print_rows(self, limit: int | None = 200) -> None:
+        rows_to_print = self.rows if limit is None else self.rows[:limit]
+        for row in rows_to_print:
+            print(row.row)
 
 
 class Database:
