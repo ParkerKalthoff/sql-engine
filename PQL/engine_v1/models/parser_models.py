@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Literal
 
+# Classes for the parser module to create AST nodes and for planner to consume
+
 # Abstract classes
 
 

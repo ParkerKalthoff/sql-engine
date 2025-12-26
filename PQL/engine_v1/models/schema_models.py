@@ -1,36 +1,93 @@
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 
-class Row:
-    def __init__(self, data: dict[str, Any]) -> None:
-        self.data = data
+class Value:
+    pass
+
+
+class Operation:
+    def __init__(self, operation: str) -> None:
+        self.operation = operation
+
+    def resolve(self, left: Value, right: Value | None) -> Value:
+        operation = self._operation()
+        return operation(left, right)
+
+    def _operation(self) -> Callable[[Value, Value | None], Value]:
+        try:
+            if self.operation == "+":
+                return lambda l, r: l + r  # type: ignore
+            elif self.operation == "-":
+                return lambda l, r: l - r  # type: ignore
+            elif self.operation == "*":
+                return lambda l, r: l * r  # type: ignore
+            elif self.operation == "/":
+                return lambda l, r: l / r  # type: ignore
+            elif self.operation == "%":
+                return lambda l, r: l % r  # type: ignore
+            elif self.operation == "AND":
+                return lambda l, r: l and r  # type: ignore
+            elif self.operation == "OR":
+                return lambda l, r: l or r  # type: ignore
+            elif self.operation == "NOT":
+                return lambda l, r: not l  # type: ignore
+            elif self.operation == ">":
+                return lambda l, r: l > r  # type: ignore
+            elif self.operation == "<":
+                return lambda l, r: l < r  # type: ignore
+            elif self.operation == ">=":
+                return lambda l, r: l >= r  # type: ignore
+            elif self.operation == "<=":
+                return lambda l, r: l <= r  # type: ignore
+            elif self.operation == "=":
+                return lambda l, r: l == r  # type: ignore
+            elif self.operation == "!=" or self.operation == "<>":
+                return lambda l, r: l != r  # type: ignore
+            else:
+                raise ValueError(f"Unsupported operation: {self.operation}")
+        except Exception as e:
+            raise ValueError(f"Illegal operation: {self.operation}") from e
+
+
+class Literal(Value):
+    def __init__(self, name: str, value: Any) -> None:
+        self.name = name
+        self.value = value
 
     def __repr__(self) -> str:
-        return f"Row(data={self.data})"
+        return f"Literal(name={self.name}, value={self.value})"
 
-    def get_value(self, column_name: str) -> Any:
-        return self.data.get(column_name)
 
-    def set_value(self, column_name: str, value: Any) -> None:
-        self.data[column_name] = value
+class Row(Value):
+    """A representation of a row in a table."""
 
-    def update_value(self, column_name: str, value: Any) -> None:
-        if column_name not in self.data:
-            raise KeyError(f"Column {column_name} does not exist in the row")
-        self.data[column_name] = value
+    def __init__(self, row: tuple[Any]) -> None:
+        self.row = row
 
-    def delete_column(self, column_name: str) -> None:
-        if column_name not in self.data:
-            raise KeyError(f"Column {column_name} does not exist in the row")
-        del self.data[column_name]
+    def add_value(self, value: Any) -> None:
+        self.row += (value,)
 
-    def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, Row):
-            return False
-        return self.data == other.data
+
+class Expression(Value):
+    def __init__(self, left: Value, operation: Operation, right: Value | None) -> None:
+        self.left = left
+        self.operation = operation
+        self.right = right
+
+    def resolve(self) -> Value:
+        left = self.left.resolve() if isinstance(self.left, Expression) else self.left
+        right = (
+            self.right.resolve() if isinstance(self.right, Expression) else self.right
+        )
+
+        return self.operation.resolve(left, right)
 
 
 class Column:
+    """
+    Representation of a column in a table.
+    """
+
     def __init__(self, name: str, col_type: str) -> None:
         self.name = name
         self.col_type = col_type
@@ -39,84 +96,96 @@ class Column:
         return f"Column(name={self.name}, type={self.col_type})"
 
 
-# Abstract class for tables
-class AbstractTable:
-    def __init__(self, name: str, columns: list[Column]) -> None:
+class Scehma:
+    def __init__(self, columns: Iterable[Column]) -> None:
+        self.columns = tuple(columns)
+        self.index: dict[str, int] = {
+            col.name: idx for idx, col in enumerate(self.columns)
+        }
+
+    def add_column(self, column: Column) -> None:
+        self.columns += (column,)
+
+    def remove_column(self, column_name: str) -> None:
+        self.columns = tuple(col for col in self.columns if col.name != column_name)
+
+    def __repr__(self) -> str:
+        return f"Scehma(columns={[col.name for col in self.columns]})"
+
+    def project(self, column_names: list[str]) -> "Scehma":
+        """Returns a new schema for a given list of column names"""
+        projected_columns = [col for col in self.columns if col.name in column_names]
+        return Scehma(projected_columns)
+
+
+class Table:
+    def __init__(self, name: str, schema: Scehma) -> None:
         self.name = name
-        self.columns = {col.name: col for col in columns}
-        self.rows: list[Row] = []
+        self.columns = schema.columns
+        self.rows: tuple[Row, ...] = ()
 
-    def has_column(self, column_name: str) -> bool:
-        return column_name in self.columns
+    def __getitem__(self, row_ident: str | int) -> Row:
+        if isinstance(row_ident, int):
+            if row_ident < 0 or row_ident >= len(self.rows):
+                raise IndexError(f"Row index {row_ident} out of range")
+            return self.rows[row_ident]
+        else:
+            raise TypeError("Row identifier must be an integer index")
 
-    def add_row(self, row: Row) -> None:
-        for column_name in row.data.keys():
-            if column_name not in self.columns:
-                raise KeyError(
-                    f"Column {column_name} does not exist in table {self.name}"
-                )
-        self.rows.append(row)
+    def delete_row_by_index(self, index: int) -> None:
+        if index < 0 or index >= len(self.rows):
+            raise IndexError(f"Row index {index} out of range")
+        self.rows = self.rows[:index] + self.rows[index + 1 :]
 
-    def delete_column(self, column_name: str) -> None:
-        if column_name not in self.columns:
-            raise KeyError(f"Column {column_name} does not exist in table {self.name}")
-        del self.columns[column_name]
-        for row in self.rows:
-            row.delete_column(column_name)
+    def project(self, column_names: list[str]) -> "Table":
+        """Returns a new table projected to the given column names"""
 
-    def delete_rows(self, rows: list[Row]) -> None:
-        for row in rows:
-            if row in self.rows:
-                self.rows.remove(row)
+        if not all(
+            col_name in [col.name for col in self.columns] for col_name in column_names
+        ):
+            raise ValueError(
+                "One or more column names do not exist in the table schema"
+            )
 
-    def where(self, condition: Callable[[Row], bool]) -> "QueryResult":
-        """
-        Filters rows in the table based on the given condition and returns a new Tbl object.
-
-        Args:
-            condition (Callable[[Row], bool]): A function that takes a Row and returns True if the row matches the condition.
-
-        Returns:
-            Tbl: A new Tbl object containing the filtered rows.
-        """
-        filtered_rows = [row for row in self.rows if condition(row)]
-        new_table = QueryResult(
-            name=self.name, columns=list(self.columns.values()), rows=filtered_rows
+        projected_schema = Scehma(
+            [col for col in self.columns if col.name in column_names]
         )
-        return new_table
+        projected_table = Table(self.name, projected_schema)
 
-    def __repr__(self) -> str:
-        return f"AbstractTable(name={self.name}, columns={list(self.columns.keys())}, rows={len(self.rows)})"
+        projected_rows = list[Row]()
+        for row in self.rows:
+            projected_values = tuple(
+                row.row[projected_schema.index[col_name]] for col_name in column_names
+            )
+            projected_rows.append(Row(projected_values))
+
+        projected_table.rows = tuple(projected_rows)
+        return projected_table
+
+    def filter(self, condition: Expression) -> "Table":
+        """Returns a new table filtered by the given condition"""
+
+        filtered_table = Table(self.name, Scehma(self.columns))
+
+        filtered_rows = list[Row]()
+        for row in self.rows:
+            context = {col.name: row.row[idx] for idx, col in enumerate(self.columns)}
+
+            # Evaluate the condition
+            if self.evaluate_condition(condition, context):
+                filtered_rows.append(row)
+
+        filtered_table.rows = tuple(filtered_rows)
+        return filtered_table
 
 
-# Base class for tables
-class Table(AbstractTable):
-    pass
-
-
-class QueryResult(AbstractTable):
-    def __init__(self, name: str, columns: list[Column], rows: list[Row]) -> None:
-        super().__init__(name, columns)
-        self.rows = rows.copy()
-
-    def __repr__(self) -> str:
-        return f"QueryResult(name={self.name}, rows={len(self.rows)})"
-
-
-class Schema:
-    tables: dict[str, Table]
-
-    def __init__(self) -> None:
-        self.tables = {}
+class Database:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.tables: dict[str, Table] = {}
 
     def add_table(self, table: Table) -> None:
         self.tables[table.name] = table
 
-    def has_table(self, table_name: str) -> bool:
-        return table_name in self.tables
-
-    def get_table(self, table_name: str) -> Table | None:
-        return self.tables.get(table_name)
-
-    def __repr__(self) -> str:
-        return f"Schema(tables={list(self.tables.keys())})"
+    def get_table(self, name: str) -> Table | None:
+        return self.tables.get(name)
