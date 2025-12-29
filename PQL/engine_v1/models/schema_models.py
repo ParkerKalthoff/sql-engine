@@ -5,51 +5,60 @@ class Value:
     pass
 
 
+class ExpressionItem:
+    pass
+
+
 class Operation:
     def __init__(self, operation: str) -> None:
         self.operation = operation
 
-    def resolve(self, left: Value, right: Value | None) -> Value:
+    def resolve(
+        self, left: ExpressionItem, right: ExpressionItem | None
+    ) -> ExpressionItem:
+        if isinstance(left, Literal):
+            left = left.value
+        if isinstance(right, Literal):
+            right = right.value
+
         operation = self._operation()
         return operation(left, right)
 
-    def _operation(self) -> Callable[[Value, Value | None], Value]:
-        try:
-            if self.operation == "+":
-                return lambda l, r: l + r  # type: ignore
-            elif self.operation == "-":
-                return lambda l, r: l - r  # type: ignore
-            elif self.operation == "*":
-                return lambda l, r: l * r  # type: ignore
-            elif self.operation == "/":
-                return lambda l, r: l / r  # type: ignore
-            elif self.operation == "%":
-                return lambda l, r: l % r  # type: ignore
-            elif self.operation == "AND":
-                return lambda l, r: l and r  # type: ignore
-            elif self.operation == "OR":
-                return lambda l, r: l or r  # type: ignore
-            elif self.operation == "NOT":
-                return lambda l, r: not l  # type: ignore
-            elif self.operation == ">":
-                return lambda l, r: l > r  # type: ignore
-            elif self.operation == "<":
-                return lambda l, r: l < r  # type: ignore
-            elif self.operation == ">=":
-                return lambda l, r: l >= r  # type: ignore
-            elif self.operation == "<=":
-                return lambda l, r: l <= r  # type: ignore
-            elif self.operation == "=":
-                return lambda l, r: l == r  # type: ignore
-            elif self.operation == "!=" or self.operation == "<>":
-                return lambda l, r: l != r  # type: ignore
-            else:
-                raise ValueError(f"Unsupported operation: {self.operation}")
-        except Exception as e:
-            raise ValueError(f"Illegal operation: {self.operation}") from e
+    def _operation(
+        self,
+    ) -> Callable[[ExpressionItem, ExpressionItem | None], ExpressionItem]:
+        if self.operation == "+":
+            return lambda left, right: left + right  # type: ignore
+        elif self.operation == "-":
+            return lambda left, right: left - right  # type: ignore
+        elif self.operation == "*":
+            return lambda left, right: left * right  # type: ignore
+        elif self.operation == "/":
+            return lambda left, right: left / right  # type: ignore
+        elif self.operation == "%":
+            return lambda left, right: left % right  # type: ignore
+        elif self.operation == "AND":
+            return lambda left, right: left and right  # type: ignore
+        elif self.operation == "OR":
+            return lambda left, right: left or right  # type: ignore
+        elif self.operation == "NOT":
+            return lambda left, right: not left  # type: ignore
+        elif self.operation == ">":
+            return lambda left, right: left > right  # type: ignore
+        elif self.operation == "<":
+            return lambda left, right: left < right  # type: ignore
+        elif self.operation == ">=":
+            return lambda left, right: left >= right  # type: ignore
+        elif self.operation == "<=":
+            return lambda left, right: left <= right  # type: ignore
+        elif self.operation == "=":
+            return lambda left, right: left == right  # type: ignore
+        elif self.operation == "!=" or self.operation == "<>":
+            return lambda left, right: left != right  # type: ignore
+        raise ValueError(f"Unsupported operation: {self.operation}")
 
 
-class Literal(Value):
+class Literal(ExpressionItem):
     def __init__(self, name: str, value: Any) -> None:
         self.name = name
         self.value = value
@@ -68,13 +77,15 @@ class Row(Value):
         self.row = self.row + (value,)
 
 
-class Expression(Value):
-    def __init__(self, left: Value, operation: Operation, right: Value | None) -> None:
+class Expression(ExpressionItem):
+    def __init__(
+        self, left: ExpressionItem, operation: Operation, right: ExpressionItem | None
+    ) -> None:
         self.left = left
         self.operation = operation
         self.right = right
 
-    def resolve(self) -> Value:
+    def resolve(self) -> ExpressionItem:
         left = self.left.resolve() if isinstance(self.left, Expression) else self.left
         right = (
             self.right.resolve() if isinstance(self.right, Expression) else self.right
@@ -83,7 +94,7 @@ class Expression(Value):
         return self.operation.resolve(left, right)
 
 
-class Column(Value):
+class Column(ExpressionItem):
     """
     Representation of a column in a table.
     """
@@ -132,7 +143,9 @@ class Condition:
     Represents a condition for filtering rows in a table.
     """
 
-    def __init__(self, left: Value, operation: str, right: Value) -> None:
+    def __init__(
+        self, left: ExpressionItem, operation: str, right: ExpressionItem
+    ) -> None:
         self.left = left
         self.operation = Operation(operation)
         self.right = right

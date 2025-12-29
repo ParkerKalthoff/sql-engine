@@ -1,6 +1,7 @@
 from PQL.engine_v1.models.lexer_models import Token
 from PQL.engine_v1.models.parser_models import (
     ColumnExpr,
+    Expr,
     Join,
     LiteralExpr,
     Query,
@@ -66,6 +67,27 @@ class Parser:
         where = None  # future WHERE parsing
 
         return SelectQuery(select=columns, from_=from_table, joins=joins, where=where)
+
+    def parse_expression(self) -> Expr:
+        tok = self.current()
+        if not tok:
+            raise SyntaxError("Unexpected end of input")
+        elif tok.kind == "LPAREN":
+            self.eat("LPAREN")
+            expr = self.parse_expression()
+            self.eat("RPAREN")
+            return expr
+        elif tok.kind == "IDENT":
+            ident = self.eat("IDENT").value
+            if self.match("DOT"):
+                col = self.eat("IDENT").value
+                return ColumnExpr(table=ident, name=col)  # type: ignore
+            else:
+                return ColumnExpr(table=None, name=ident)
+        elif tok.kind in ("NUMBER", "STRING"):
+            return LiteralExpr(value=self.eat(tok.kind).👌👌👌value)
+        else:
+            raise SyntaxError(f"Invalid expression: {tok}")
 
     # TODO Support Expressions like (SALARY + BONUS) * 0.77 AS NET_EARNINGS
     # Keeping simple as columns and literals for now

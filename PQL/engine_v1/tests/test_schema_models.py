@@ -1,5 +1,14 @@
-from PQL.engine_v1.models.schema_models import Condition, Database, Literal
-from PQL.engine_v1.models.schema_models import Table, Scehma, Column, Row
+from PQL.engine_v1.models.schema_models import (
+    Condition,
+    Database,
+    Literal,
+    Table,
+    Scehma,
+    Column,
+    Row,
+    Operation,
+    Expression,
+)
 
 
 def test_database_creation():
@@ -122,3 +131,58 @@ def test_table_count_rows():
     )
 
     assert table.count_rows() == 3
+
+
+def test_schema_add_duplicate_column():
+    schema = Scehma(columns=[Column(name="id", col_type="INT")])
+    try:
+        schema.add_column(Column(name="id", col_type="INT"))
+        assert False
+    except ValueError:
+        pass
+
+
+def test_schema_remove_nonexistent_column():
+    schema = Scehma(columns=[Column(name="id", col_type="INT")])
+    schema.remove_column("nonexistent")
+    assert len(schema.columns) == 1
+
+
+def test_condition_invalid_column():
+    schema = Scehma(columns=[Column(name="id", col_type="INT")])
+    row = Row((1,))
+    condition = Condition(
+        left=Column(name="nonexistent", col_type="INT"),
+        operation="=",
+        right=Literal(name="value", value=1),
+    )
+    try:
+        condition.evaluate(row, schema)
+        assert False
+    except ValueError:
+        pass
+
+
+def test_condition_type_error():
+    schema = Scehma(columns=[Column(name="id", col_type="INT")])
+    row = Row((1,))
+    condition = Condition(
+        left=Literal(name="value", value=1),
+        operation="=",
+        right=Literal(name="value", value=1),
+    )
+    try:
+        condition.evaluate(row, schema)
+        assert False
+    except Exception:
+        pass
+
+
+def test_expression_resolution():
+    expr = Expression(
+        left=Literal(name="left", value=10),
+        operation=Operation("+"),
+        right=Literal(name="right", value=5),
+    )
+    result = expr.resolve()
+    assert result == 15
